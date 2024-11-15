@@ -32,10 +32,6 @@ ts_data = data['Passengers']
 ts_data.index = pd.to_datetime(ts_data.index)
 ts_data = ts_data.asfreq('MS') # frequency here is monthly start
 
-# Split the data into training and testing
-train_ts_data = ts_data.iloc[:120]  # First 120 data points
-test_ts_data = ts_data.iloc[120:]   # Last 24 data points
-
 class HoltWintersEnv(gym.Env):
     def __init__(self, ts_data, window_size=24, forecast_horizon=1):
         super(HoltWintersEnv, self).__init__()
@@ -81,6 +77,7 @@ class HoltWintersEnv(gym.Env):
             reward = -100.0
             terminated = False
             truncated = False
+            self.current_step += 1
             if self.current_step >= self.max_steps:
                 terminated = True
                 next_state = np.zeros(self.window_size)
@@ -99,7 +96,7 @@ class HoltWintersEnv(gym.Env):
         # Prepare for next step
         self.current_step += 1
         terminated = self.current_step >= self.max_steps
-        truncated = False
+        truncated = False  # Set to True if you have a time limit
         if not terminated:
             next_state = self.ts_data[self.current_step:self.current_step + self.window_size].values
         else:
@@ -121,11 +118,7 @@ model = PPO('MlpPolicy', env, verbose=1)
 model.learn(total_timesteps=5000)
 
 # Evaluate the agent
-state = train_ts_data[-env.window_size:].values.astype(np.float32)
-action, _ = model.predict(state)
-alpha, beta, gamma = action
-print(f"Alpha: {alpha}, Beta: {beta}, Gamma: {gamma}")
-
+state, _ = env.reset()
 rewards = []
 alphas, betas, gammas = [], [], []
 while True:
@@ -139,75 +132,4 @@ while True:
         break
 
 print(f"Total Reward: {sum(rewards)}")
-
-# Plot the hyperparameters over time
-plt.figure(figsize=(12, 4))
-plt.plot(alphas, label='Alpha')
-plt.plot(betas, label='Beta')
-plt.plot(gammas, label='Gamma')
-plt.title('Hyperparameters Over Time')
-plt.legend()
-plt.show()
-
-# Reset the environment
-state, _ = env.reset()
-
-# Get the action (hyperparameters) from the trained agent
-action, _ = model.predict(state)
-alpha, beta, gamma = action
-
-# Fit the Holt-Winters model on the entire training data using the agent's hyperparameters
-model_hw = ExponentialSmoothing(
-    train_ts_data,
-    trend='add',
-    seasonal='add',
-    seasonal_periods=12
-)
-
-try:
-    model_fit = model_hw.fit(smoothing_level=alpha, smoothing_trend=beta,
-                             smoothing_seasonal=gamma, optimized=False)
-    forecast = model_fit.forecast(len(test_ts_data))
-except ValueError as e:
-    print(f"Model fitting failed: {e}")
-    forecast = pd.Series([np.nan]*len(test_ts_data), index=test_ts_data.index)
-
-# Calculate the MSE on the test data
-mse = np.mean((forecast - test_ts_data) ** 2)
-print(f"Test MSE: {mse}")
-
-# Plot the forecasts vs actuals
-plt.figure(figsize=(12, 6))
-plt.plot(train_ts_data.index, train_ts_data.values, label='Training Data')
-plt.plot(test_ts_data.index, test_ts_data.values, label='Actual Test Data')
-plt.plot(test_ts_data.index, forecast.values, label='Forecasted Data')
-plt.title('Actual vs Forecasted Passengers (Test Data)')
-plt.xlabel('Date')
-plt.ylabel('Number of Passengers')
-plt.legend()
-plt.show()
-
-# Traditional optimization
-model_hw_opt = ExponentialSmoothing(
-    train_ts_data,
-    trend='add',
-    seasonal='add',
-    seasonal_periods=12
-).fit(optimized=True)
-
-forecast_opt = model_hw_opt.forecast(len(test_ts_data))
-mse_opt = np.mean((forecast_opt - test_ts_data) ** 2)
-print(f"Test MSE with Traditional Optimization: {mse_opt}")
-
-# Plot comparison
-plt.figure(figsize=(12, 6))
-plt.plot(train_ts_data.index, train_ts_data.values, label='Training Data')
-plt.plot(test_ts_data.index, test_ts_data.values, label='Actual Test Data')
-plt.plot(test_ts_data.index, forecast.values, label='RL Forecast')
-plt.plot(test_ts_data.index, forecast_opt.values, label='Optimized Forecast')
-plt.title('Actual vs Forecasted Passengers (Test Data)')
-plt.xlabel('Date')
-plt.ylabel('Number of Passengers')
-plt.legend()
-plt.show()
 
