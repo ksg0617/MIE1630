@@ -54,15 +54,48 @@ class HoltWintersEnv(gym.Env):
         # Action space: Continuous values for alpha, beta, gamma
         self.action_space = spaces.Box(low=0.01, high=1.0, shape=(3,), dtype=np.float32)
 
-        # Observation space: Recent time series data
+        # Number of additional features: trend, mean, variance, month_sin, month_cos
+        self.num_additional_features = 5
+
+        # Observation space: Recent time series data + additional features
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.window_size,), dtype=np.float32)
+            low=-np.inf, high=np.inf,
+            shape=(self.window_size + self.num_additional_features,),
+            dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        self.current_step = 0
+        # Check if a custom starting point is provided
+        if options and 'current_step' in options:
+            self.current_step = options['current_step']
+        else:
+            self.current_step = 0  # Default behavior
+
         state = self.ts_data[self.current_step:self.current_step + self.window_size].values
-        return state.astype(np.float32), {}
+
+        # Compute additional features
+        # Trend (slope of linear regression)
+        y = state
+        x = np.arange(len(y))
+        slope, intercept = np.polyfit(x, y, 1)
+        trend = slope
+
+        # Mean and variance over the window
+        mean = np.mean(y)
+        variance = np.var(y)
+
+        # Seasonality: compute month_sin and month_cos
+        current_date = self.ts_data.index[self.current_step + self.window_size - 1]
+        month = current_date.month
+        month_sin = np.sin(2 * np.pi * month / 12)
+        month_cos = np.cos(2 * np.pi * month / 12)
+
+        additional_features = np.array([trend, mean, variance, month_sin, month_cos])
+
+        # Concatenate state and additional features
+        observation = np.concatenate([state, additional_features])
+
+        return observation.astype(np.float32), {}
 
     def step(self, action):
         alpha, beta, gamma = action
@@ -89,9 +122,27 @@ class HoltWintersEnv(gym.Env):
             truncated = False
             if self.current_step >= self.max_steps:
                 terminated = True
-                next_state = np.zeros(self.window_size)
+                next_state = np.zeros(self.window_size + self.num_additional_features)
             else:
                 next_state = self.ts_data[self.current_step:self.current_step + self.window_size].values
+
+                # Compute additional features
+                y = next_state
+                x = np.arange(len(y))
+                slope, intercept = np.polyfit(x, y, 1)
+                trend = slope
+
+                mean = np.mean(y)
+                variance = np.var(y)
+
+                current_date = self.ts_data.index[self.current_step + self.window_size - 1]
+                month = current_date.month
+                month_sin = np.sin(2 * np.pi * month / 12)
+                month_cos = np.cos(2 * np.pi * month / 12)
+
+                additional_features = np.array([trend, mean, variance, month_sin, month_cos])
+                next_state = np.concatenate([next_state, additional_features])
+
             return next_state.astype(np.float32), reward, terminated, truncated, {}
 
         # Forecast
@@ -100,7 +151,7 @@ class HoltWintersEnv(gym.Env):
 
         # Calculate reward
         mse = np.mean((forecast - actual) ** 2)
-        reward = -mse  # Negative MSE as reward
+        reward = -mse / np.mean(self.ts_data ** 2)  # Normalized MSE
 
         # Prepare for next step
         self.current_step += 1
@@ -108,13 +159,32 @@ class HoltWintersEnv(gym.Env):
         truncated = False
         if not terminated:
             next_state = self.ts_data[self.current_step:self.current_step + self.window_size].values
+
+            # Compute additional features
+            y = next_state
+            x = np.arange(len(y))
+            slope, intercept = np.polyfit(x, y, 1)
+            trend = slope
+
+            mean = np.mean(y)
+            variance = np.var(y)
+
+            current_date = self.ts_data.index[self.current_step + self.window_size - 1]
+            month = current_date.month
+            month_sin = np.sin(2 * np.pi * month / 12)
+            month_cos = np.cos(2 * np.pi * month / 12)
+
+            additional_features = np.array([trend, mean, variance, month_sin, month_cos])
+            next_state = np.concatenate([next_state, additional_features])
+
         else:
-            next_state = np.zeros(self.window_size)
+            next_state = np.zeros(self.window_size + self.num_additional_features)
 
         return next_state.astype(np.float32), reward, terminated, truncated, {}
 
     def render(self):
         pass  # Rendering is not implemented
+
 
 # Instantiate and check the environment
 env = HoltWintersEnv(ts_data, window_size=24, forecast_horizon=1)
@@ -124,10 +194,19 @@ check_env(env)
 model = PPO('MlpPolicy', env, verbose=1)
 
 # Train the agent
-model.learn(total_timesteps=10000)
+model.learn(total_timesteps=5000)
 
 # Evaluate the agent
-state, _ = env.reset()
+# Set the starting point to the end of the training data
+start_step = len(train_ts_data) - env.window_size
+
+# Reset the environment with the custom starting point
+state, _ = env.reset(options={'current_step': start_step})
+
+action, _ = model.predict(state)
+alpha, beta, gamma = action
+print(f"Alpha: {alpha}, Beta: {beta}, Gamma: {gamma}")
+
 rewards = []
 alphas, betas, gammas = [], [], []
 while True:
@@ -152,8 +231,7 @@ plt.legend()
 plt.show()
 
 # Reset the environment
-last_state_index = len(train_ts_data) - 24
-state = train_ts_data[last_state_index:len(train_ts_data)].values.astype(np.float32)
+state, _ = env.reset()
 
 # Get the action (hyperparameters) from the trained agent
 action, _ = model.predict(state)
