@@ -75,7 +75,11 @@ class HoltWintersEnv(gym.Env):
 
         # Calculate reward
         mse = np.mean((forecast - actual) ** 2)
-        reward = -mse  # Negative MSE as reward
+        # Scale the reward to a reasonable range, e.g., between -1 and 0
+        reward = -mse / (mse + 1e-8)
+        reward = np.clip(reward, -1.0, 0.0)
+
+        #reward = -mse  # Negative MSE as reward
 
         # Prepare for next step
         self.current_step += 1

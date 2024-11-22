@@ -39,6 +39,7 @@ def holt_winters_mse(alpha, beta, gamma):
 
 np.random.seed(98)
 
+
 # Define the parameter bounds
 pbounds = {
     'alpha': (0.01, 1.0),
