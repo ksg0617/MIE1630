@@ -2,6 +2,16 @@ import pandas as pd
 import numpy as np
 import h5py
 
+def load_data(csv_file):
+    data = pd.read_csv(csv_file)
+    time_index = pd.to_datetime(data.iloc[:, 0])
+    time_values = data.iloc[:,1]
+    time_series = pd.Series(time_values.values.astype(np.float32), index=time_index)
+    time_series = time_series.asfreq('h')
+    train_data = time_series.iloc[:-48]
+    test_data = time_series.iloc[-48:]
+    return train_data, test_data
+
 def load_nycbike_data():
     f = h5py.File('D:/MIE1630/Data/nyc-bike.h5', 'r')
     raw_data = f['raw_data']

@@ -18,7 +18,7 @@ import random
 import torch
 
 class HoltWintersEnv(gym.Env):
-    def __init__(self, ts_data, window_size=48, forecast_horizon=12):
+    def __init__(self, ts_data, window_size=96, forecast_horizon=48):
         super(HoltWintersEnv, self).__init__()
         self.ts_data = ts_data
         self.window_size = window_size
@@ -50,9 +50,9 @@ class HoltWintersEnv(gym.Env):
         # Fit Holt-Winters model
         model = ExponentialSmoothing(
             train_data,
-            trend='mul',
-            seasonal='mul',
-            seasonal_periods=12
+            trend='add',
+            seasonal='add',
+            seasonal_periods=24
         )
         try:
             model_fit = model.fit(smoothing_level=alpha, smoothing_trend=beta,
@@ -75,14 +75,14 @@ class HoltWintersEnv(gym.Env):
 
         # Calculate reward
         mse = np.mean((forecast - actual) ** 2)
-        # Scale the reward to a reasonable range, e.g., between -1 and 0
-        reward = -mse / (mse + 1e-8)
-        reward = np.clip(reward, -1.0, 0.0)
+        #mae = np.mean(np.abs(forecast - actual))
 
+        reward = -np.sqrt(mse)
+        #reward = -mae
         #reward = -mse  # Negative MSE as reward
 
         # Prepare for next step
-        self.current_step += 1
+        self.current_step += 6
         terminated = self.current_step >= self.max_steps
         truncated = False
         if not terminated:
