@@ -8,6 +8,41 @@ import matplotlib.pyplot as plt
 # Optionally scale the data
 from sklearn.preprocessing import MinMaxScaler
 
+import time
+
+def compute_forecast_metrics(forecast, test_ts_data):
+    """
+    Compute RMSE, MAE, and MAPE for forecast and test time series data.
+
+    Parameters:
+    - forecast (array): The forecasted values.
+    - test_ts_data (array): The actual observed values.
+
+    Returns:
+    - dict: A dictionary containing RMSE, MAE, and MAPE.
+    """
+    
+    if len(forecast) != len(test_ts_data):
+        raise ValueError("Forecast and test time series data must have the same length.")
+    
+    # Compute errors
+    errors = forecast - test_ts_data
+    
+    # RMSE
+    rmse = np.sqrt(np.mean(errors**2))
+    
+    # MAE
+    mae = np.mean(np.abs(errors))
+    
+    # MAPE (avoid division by zero by replacing zero values in the test data with a small epsilon)
+    epsilon = np.finfo(float).eps  # Smallest positive float
+    test_ts_data_safe = np.where(test_ts_data == 0, epsilon, test_ts_data)
+    mape = np.mean(np.abs(errors / test_ts_data_safe)) * 100
+    
+    return {"RMSE": rmse, "MAE": mae, "MAPE": mape}
+
+# Record start time
+start_time = time.time()
 
 np.random.seed(98)
 # Define the objective function
@@ -44,8 +79,8 @@ def holt_winters_mse(alpha, beta, gamma):
             optimized=False
         )
         forecast = model_fit.forecast(forecast_horizon)
-        mse = np.sqrt(np.mean((forecast - val_data) ** 2))
-        return -mse  # Negate MSE because Bayesian Optimization maximizes by default
+        rmse = np.sqrt(np.mean((forecast - val_data) ** 2))
+        return -rmse  # Negate MSE because Bayesian Optimization maximizes by default
     except Exception as e:
         
         print(f"Failed for alpha={alpha}, beta={beta}, gamma={gamma}: {e}")
@@ -91,8 +126,15 @@ model_fit_best = model_hw_best.fit(
     optimized=False
 )
 forecast_best = model_fit_best.forecast(len(test_ts_data))
-mse_best = np.mean((forecast_best - test_ts_data) ** 2)
-print(f"Test MSE with Bayesian Optimization: {mse_best}")
+
+# Calculate the RMSE on the test data
+metrics = compute_forecast_metrics(forecast_best, test_ts_data)
+print(metrics)
+
+# Record end time
+end_time = time.time()
+execution_time = end_time - start_time
+print(f"Execution Time: {execution_time:.2f} seconds")
 
 # Specify the number of last data points to display
 n_last_points = 50  # Adjust this number based on how many data points you want to see

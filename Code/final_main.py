@@ -23,9 +23,44 @@ torch.manual_seed(98)
 
 from holt_winters_env import HoltWintersEnv
 from data_loader import load_data
+import time
 
-# data_file_path = "D:/MIE1630/Data/AirQualityUCI.csv"
-# data_file_path = "D:/MIE1630/Data/electricity.csv"
+def compute_forecast_metrics(forecast, test_ts_data):
+    """
+    Compute RMSE, MAE, and MAPE for forecast and test time series data.
+
+    Parameters:
+    - forecast (array): The forecasted values.
+    - test_ts_data (array): The actual observed values.
+
+    Returns:
+    - dict: A dictionary containing RMSE, MAE, and MAPE.
+    """
+    
+    if len(forecast) != len(test_ts_data):
+        raise ValueError("Forecast and test time series data must have the same length.")
+    
+    # Compute errors
+    errors = forecast - test_ts_data
+    
+    # RMSE
+    rmse = np.sqrt(np.mean(errors**2))
+    
+    # MAE
+    mae = np.mean(np.abs(errors))
+    
+    # MAPE (avoid division by zero by replacing zero values in the test data with a small epsilon)
+    epsilon = np.finfo(float).eps  # Smallest positive float
+    test_ts_data_safe = np.where(test_ts_data == 0, epsilon, test_ts_data)
+    mape = np.mean(np.abs(errors / test_ts_data_safe)) * 100
+    
+    return {"RMSE": rmse, "MAE": mae, "MAPE": mape}
+
+# Record start time
+start_time = time.time()
+
+#data_file_path = "D:/MIE1630/Data/AirQualityUCI.csv"
+#data_file_path = "D:/MIE1630/Data/electricity.csv"
 data_file_path = "D:/MIE1630/Data/traffic.csv"
 
 train_ts_data, test_ts_data = load_data(data_file_path)
@@ -80,9 +115,14 @@ except ValueError as e:
     print(f"Model fitting failed: {e}")
     forecast = pd.Series([np.nan]*len(test_ts_data), index=test_ts_data.index)
 
-# Calculate the MSE on the test data
-mse = np.mean((forecast - test_ts_data) ** 2)
-print(f"Test MSE: {mse}")
+# Calculate the RMSE on the test data
+metrics = compute_forecast_metrics(forecast, test_ts_data)
+print(metrics)
+
+# Record end time
+end_time = time.time()
+execution_time = end_time - start_time
+print(f"Execution Time: {execution_time:.2f} seconds")
 
 # Specify the number of last data points to display
 n_last_points = 50  # Adjust this number based on how many data points you want to see

@@ -10,14 +10,45 @@ import random
 from data_loader import load_data
 import time
 
+def compute_forecast_metrics(forecast, test_ts_data):
+    """
+    Compute RMSE, MAE, and MAPE for forecast and test time series data.
+
+    Parameters:
+    - forecast (array): The forecasted values.
+    - test_ts_data (array): The actual observed values.
+
+    Returns:
+    - dict: A dictionary containing RMSE, MAE, and MAPE.
+    """
+    
+    if len(forecast) != len(test_ts_data):
+        raise ValueError("Forecast and test time series data must have the same length.")
+    
+    # Compute errors
+    errors = forecast - test_ts_data
+    
+    # RMSE
+    rmse = np.sqrt(np.mean(errors**2))
+    
+    # MAE
+    mae = np.mean(np.abs(errors))
+    
+    # MAPE (avoid division by zero by replacing zero values in the test data with a small epsilon)
+    epsilon = np.finfo(float).eps  # Smallest positive float
+    test_ts_data_safe = np.where(test_ts_data == 0, epsilon, test_ts_data)
+    mape = np.mean(np.abs(errors / test_ts_data_safe)) * 100
+    
+    return {"RMSE": rmse, "MAE": mae, "MAPE": mape}
+
 # Record start time
 start_time = time.time()
 
 random.seed(98)
 
-# data_file_path = "D:/MIE1630/Data/AirQualityUCI.csv"
+data_file_path = "D:/MIE1630/Data/AirQualityUCI.csv"
 # data_file_path = "D:/MIE1630/Data/electricity.csv"
-data_file_path = "D:/MIE1630/Data/traffic.csv"
+# data_file_path = "D:/MIE1630/Data/traffic.csv"
 
 train_ts_data, test_ts_data = load_data(data_file_path)
 
@@ -97,8 +128,10 @@ best_model_fit = best_model.fit(
 
 # Forecast on the test set
 best_predictions = best_model_fit.forecast(steps=len(test_ts_data))
-mse_best = np.mean((best_predictions - test_ts_data) ** 2)
-print(f"Test MSE with Random Search: {mse_best}")
+# Calculate the RMSE on the test data
+metrics = compute_forecast_metrics(best_predictions, test_ts_data)
+print(metrics)
+
 
 # Record end time
 end_time = time.time()
